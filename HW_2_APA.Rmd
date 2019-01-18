@@ -1,0 +1,426 @@
+---
+title: "The Movies Data Set"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE, include=FALSE}
+library(knitr)
+library(tidyverse)
+library(sqldf)
+library(reticulate)
+library(dplyr)
+library(treemap)
+library(lubridate)
+ast <- import("ast")
+```
+###Introduction:
+
+The goal of this project was to determine whether movies would be good or bad based on a variety of indicators prior to its release. We categorized movies that are good as those that received a bwrating of 6/10 or greater. Next we built a logistic regression model that used budget, runtime, popularity, and month to predict whether a movie would be good or bad.
+
+###Data Manipulation
+
+The data for this project came from three different public datasets from the Kaggle source "The Movies Database". The movies, credits, and rating files were compiled into one database, removing duplicates, that resulted in approximately 7,500 records. Next, we created a new ratings variable called bwratings, that used the following formula:
+
+Weighted Rating (WR) = (v ÷ (v+m)) × R + (m ÷ (v+m)) × C where:
+R = average movie rating
+v = number of votes for the movie
+m = minimum votes required to be listed in the Top 250 (currently 25,000)
+C = the mean vote across the whole report (currently 7.0)
+
+And consisted of Vote Average and Vote Count. Then we calculated the simple statistics for bwratings as a sanity check to see if there were any outliers that could heavily skew our data.
+
+
+```{r echo=FALSE, warning = FALSE, message = FALSE, include=FALSE}
+credits <- read_csv("MSBA/Fall/Mod B/Applied Predictive Analytics/HW 2/the-movies-dataset/credits.csv")
+movies <- read_csv("MSBA/Fall/Mod B/Applied Predictive Analytics/HW 2/the-movies-dataset/movies_metadata.csv")
+ratings <- read_csv("MSBA/Fall/Mod B/Applied Predictive Analytics/HW 2/the-movies-dataset/ratings.csv")
+
+# Use group by to compute the average rating for each movie
+avg_ratings <- sqldf('select movieId, avg(rating) as avg_rating
+                      from ratings 
+                      group by movieId
+                      order by movieId;')
+# select only distinct movies, remove duplicates
+movies <- sqldf('select distinct * from movies;')
+
+# Inner join movies with avg_ratings
+movie_rating <- sqldf('select movies.*, avg_rating
+                      from movies 
+                      inner join avg_ratings 
+                      on movies.id = avg_ratings.movieId 
+                      group by movieId
+                      order by movieId;')
+
+# Inner join credits to add cast information
+final_movies <- sqldf('select movie_rating.*, credits.cast
+                      from movie_rating
+                      inner join credits on movie_rating.id = credits.id;')
+
+# Remove duplicates to get the final_movies data set
+final_movies <- sqldf('select distinct * from final_movies;')
+
+# Save as a data frame
+lr_movies <- as.data.frame(final_movies)
+```
+
+
+```{r echo=FALSE, include=FALSE}
+nrow(lr_movies)
+```
+
+```{r echo=FALSE, include=FALSE}
+kable(t(lr_movies[1,]), format = "html")
+```
+
+
+
+```{r echo=FALSE, include=FALSE}
+first_movie_actors <- lr_movies[1, "cast"]
+actors_list <- ast$literal_eval(first_movie_actors)
+actors_name <- c()
+for (actor in actors_list)
+  actors_name <- c(actors_name, actor['name'][[1]])
+
+actors_name
+```
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE, include=FALSE}
+#checking missing values 
+missing <- sapply(lr_movies,function(x) sum(is.na(x)))
+```
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE, include=FALSE}
+#Identifying Different Genres in Data Set.
+# removing stringified json data from genres and preparing another data frame 
+genres_text <- lr_movies$genres
+
+ text <- 
+    sub("\\£\\$\\£", "",    #drop the first one
+        gsub("\'|\"|\\[|\\]|\\{|\\}|,", "",
+             gsub("\'id\':|\'name\':", 
+                  "£$£", 
+                  #gsub("[[:punct:]]", "", 
+                  genres_text)))
+
+  raw_movies <- data.frame(matrix(
+    trimws(unlist(
+      strsplit(text, "\\£\\$\\£")
+    )), 
+    ncol = 2, byrow = TRUE), stringsAsFactors = FALSE)
+
+names(raw_movies) <- c("id", "name")
+```
+```{r message=FALSE, warning=FALSE, paged.print=FALSE, include=FALSE}
+#Unique genres in the dataframe. 
+genres <- unique(raw_movies$name)
+genres
+```
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE, include=FALSE}
+#preparing a new data set with unique genres as separate columns. Also populating each genre column with True or False
+#with corresponding matching genres
+new_lr_movies <- lr_movies
+new_lr_movies[c(genres)] <- NA
+new_lr_movies$Drama <- mapply(grepl, "Drama", new_lr_movies$genres)
+new_lr_movies$Crime <- mapply(grepl, "Crime", new_lr_movies$genres)
+new_lr_movies$Comedy <- mapply(grepl, "Comedy", new_lr_movies$genres)
+new_lr_movies$Action <- mapply(grepl, "Action", new_lr_movies$genres)
+new_lr_movies$Thriller <- mapply(grepl, "Thriller", new_lr_movies$genres)
+new_lr_movies$Adventure <- mapply(grepl, "Adventure", new_lr_movies$genres)
+new_lr_movies$Science_Fiction <- mapply(grepl, "Science Fiction", new_lr_movies$genres)
+new_lr_movies$Animation <- mapply(grepl, "Animation", new_lr_movies$genres)
+new_lr_movies$Family <- mapply(grepl, "Family", new_lr_movies$genres)
+new_lr_movies$Romance <- mapply(grepl, "Romance", new_lr_movies$genres)
+new_lr_movies$Mystery <- mapply(grepl, "Mystery", new_lr_movies$genres)
+new_lr_movies$Music <- mapply(grepl, "Music", new_lr_movies$genres)
+new_lr_movies$Horror <- mapply(grepl, "Horror", new_lr_movies$genres)
+new_lr_movies$Fantasy <- mapply(grepl, "Fantasy", new_lr_movies$genres)
+new_lr_movies$Documentary <- mapply(grepl, "Documentary", new_lr_movies$genres)
+new_lr_movies$Fantasy <- mapply(grepl, "Fantasy", new_lr_movies$genres)
+new_lr_movies$War <- mapply(grepl, "War", new_lr_movies$genres)
+new_lr_movies$Western <- mapply(grepl, "Western", new_lr_movies$genres)
+new_lr_movies$History <- mapply(grepl, "History", new_lr_movies$genres)
+new_lr_movies$Foreign <- mapply(grepl, "Foreign", new_lr_movies$genres)
+new_lr_movies$TV_Movie <- mapply(grepl, "TV Movie", new_lr_movies$genres)
+```
+
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE, include=FALSE}
+str(new_lr_movies)
+
+```
+###Exploratory Data Analysis
+
+Prior to choosing the above variables we first did some exploratory analysis to determine whether the variables would play a significant role in whether the movie would be good or bad. In order to avoid including redundant variables that didn't add to the model significantly, we removed the following variables: vote_average, vote_count, avg_rating and only included popularity
+
+Our suspicion was that budget and popularity would be highly correlated so we created a hexagonal scatterplot to review their relationship. We found that on average, higher budget movies received a higher popularity score than lower budget movies.
+```{r warning=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE, echo=FALSE, fig.width=4, fig.height=3,fig.show='hold',fig.align='center'}
+
+temp = lr_movies %>%  
+  select(budget, popularity) %>% 
+  distinct() 
+ggplot(temp, aes(budget, popularity)) + 
+  geom_hex(bins = 40) +
+  scale_fill_distiller(palette = "Spectral") + 
+  stat_smooth(method = "lm", color = "black", size = 2) + 
+  scale_x_continuous(labels = scales::comma)
+```
+
+We also plotted the runtime of the movie against the popularity and found that the majority of movies were around 95 minutes in length. Furthermore, the we found that the most popular movies had a runtime between 90 - 150 minutes in length. Anything exceeding this runtime range became drastically less popular.
+```{r message=FALSE, warning=FALSE, paged.print=FALSE, echo=FALSE,fig.width=4, fig.height=3,fig.show='hold',fig.align='center'}
+#populariy and runtime
+ggplot(lr_movies, aes(lr_movies$runtime, lr_movies$popularity, color = lr_movies$adult)) +
+  geom_point(shape = 16, size = 2, show.legend = FALSE) +
+  xlab("Runtime") + ylab("Popularity") +
+  theme_minimal()
+   
+```
+
+```{r include=FALSE}
+# Basic scatter plot
+lr_movies$adult <- as.factor(lr_movies$adult)
+ggplot(lr_movies, aes(x=popularity, y=budget, color = adult)) + 
+geom_point(size=2) +
+scale_color_manual(values=c('blue', 'green'))
+```
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE, include=FALSE}
+## STEP 2: EXPLORATORY ANALYSIS -------------------------
+# dataset dimensions
+dim(new_lr_movies)
+```
+```{r message=FALSE, warning=FALSE, include=FALSE}
+library(GGally)
+# --------------Correlation of numeric variables--------------
+
+correl_new_lr_movies <- select_if(new_lr_movies, is.numeric)
+
+#dropping column id 
+correl_new_lr_movies <- correl_new_lr_movies[,c(1,3:8)]
+```
+```{r echo=FALSE, fig.width=3, fig.height=3,fig.show='hold',fig.align='center', include=FALSE}
+knitr::opts_chunk$set(fig.width=4, fig.height=6)
+ggcorr(correl_new_lr_movies, method = c("pairwise", "pearson"))
+```
+We created a histogram of the movie genres to determine the most released genre - Drama.
+```{r message=FALSE, warning=FALSE, echo = FALSE, fig.width=6, fig.height=3,fig.show='hold',fig.align='center'}
+knitr::opts_chunk$set(fig.width=4, fig.height=6) 
+#Production Companies
+#Production Countires
+#Spoken languages
+#Cast
+
+#distribution of movie genres
+
+raw_movies$name <- as.factor(raw_movies$name)
+ggplot(raw_movies) + geom_bar(aes(x = name, fill = name)) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+```{r message=FALSE, warning=FALSE, paged.print=FALSE, include=FALSE}
+#preparing dataset for cast 
+
+cast_text <- lr_movies$cast
+
+ text <- 
+    sub("\\£\\$\\£", "",    #drop the first one
+        gsub("\'|\"|\\[|\\]|\\{|\\}|,", "",
+             gsub("\'cast_id\':|\'character\':|\'credit_id\':|\'gender\':|\'id\':|\'name\':|\'order\':|\'profile_path\':", 
+                  "£$£", 
+                  #gsub("[[:punct:]]", "", 
+                  cast_text)))
+
+cast_data <- data.frame(matrix(
+    trimws(unlist(
+      strsplit(text, "\\£\\$\\£")
+    )), 
+    ncol = 8, byrow = TRUE), stringsAsFactors = FALSE)
+  
+names(cast_data) <- c("cast_id", "character_name", "credit_id", "gender", "id", "name", "order", "profile_path")
+
+```
+
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE, echo = FALSE, include=FALSE}
+# Exploring Cassts of the movies dataset 
+# who which gender signs up for more movies 
+## Bar plot for populat Actor classified by Gender 
+cast_data$gender[cast_data$gender==1] <- "Female"
+cast_data$gender[cast_data$gender==2] <- "Male"
+cast_data$gender[cast_data$gender==0] <- "Unknown"
+cast_data$gender <- factor(cast_data$gender)
+ 
+
+ggplot(cast_data) + geom_bar(aes(x = gender, fill = gender)) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+```{r message=FALSE, warning=FALSE, paged.print=FALSE, include=FALSE}
+# most popular actor Male 
+# most popular actor femae
+
+library(wordcloud)
+library(plyr)
+cast_male <- cast_data[cast_data$gender == "Male",]
+cast_male_cloud <- plyr::count(cast_male$name)
+cast_male_cloud <- cast_male_cloud[-(1:16), , drop = FALSE]
+names(cast_male_cloud) <- c("Name", "Frequency")
+cast_male_cloud <- cast_male_cloud %>%
+arrange(desc(Frequency) ) %>%
+head(n=20)
+cast_male_cloud
+```
+```{r message=FALSE, warning=FALSE, paged.print=FALSE, echo=FALSE, include=FALSE}
+### Bar plot for popular Male actors
+p <-ggplot(cast_male_cloud, aes(x = reorder(Name, -Frequency), y = Frequency) )
+p +geom_bar(stat = "identity", position = "dodge",fill = "navy") +
+  xlab("Male Actors") + ylab("No. of Movies") +
+  ggtitle("Who signed up for most movies among male actors? ") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+   geom_text(aes(label=Frequency), position=position_dodge(width=0.9), vjust=-0.25)
+ 
+  
+  
+```
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE, echo=FALSE}
+cast_female <- cast_data[cast_data$gender == "Female",]
+cast_female_cloud <- plyr::count(cast_female$name)
+#cast_female_cloud <- cast_female_cloud[-(1:16), , drop = FALSE]
+names(cast_female_cloud) <- c("Name", "Frequency")
+
+cast_female_cloud <- cast_female_cloud %>%
+arrange(desc(Frequency) ) %>%
+head(n=50)
+
+```
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE, include=FALSE}
+
+library(RColorBrewer)
+library(portfolio)
+```
+For checking the popularity, we created two word clouds to investigate the most popular actor and actress. The word clouds indicate that Bess Flowers is the most popular actress and Bruce Willis is the most popular actor among all the casts.
+```{r message=FALSE, warning=FALSE, paged.print=FALSE, fig.width=5, fig.height=5,fig.show='hold',fig.align='center', echo=FALSE}
+#WordCloud from Female 
+knitr::opts_chunk$set(fig.width=4, fig.height=6) 
+
+wordcloud(words=cast_female_cloud$Name,freq=cast_female_cloud$Frequency,max.words = 50,min.fre = 1,random.order=FALSE,random.color=FALSE,rot.per=0.35,colors = brewer.pal(20,"Dark2"))
+
+```
+```{r warning=FALSE, paged.print=FALSE, echo=FALSE, include=FALSE}
+
+wordcloud(words=cast_male_cloud$Name,freq=cast_male_cloud$Frequency,max.words = 60,min.fre = 1,random.order=FALSE,random.color=FALSE,rot.per=0.35,colors = brewer.pal(20,"Dark2"))
+
+```
+```{r message=FALSE, warning=FALSE, paged.print=FALSE, include = FALSE}
+get_cor <- function(df){
+    m <- cor(df$x,df$y, use="pairwise.complete.obs");
+    eq <- substitute(expr=r==cor,env=list(cor=format(m, digits = 4)))
+    return(as.character(as.expression(eq)))                
+}
+```
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE, echo=FALSE, fig.width=4, fig.height=6,fig.show='hold',fig.align='center', include=FALSE}
+#highest Grossing movies
+lr_movies %>% 
+  select(original_title,revenue) %>% 
+  drop_na(original_title)%>% 
+  arrange(desc(revenue)) %>% 
+  head(10)  %>% 
+  ggplot(aes(reorder(original_title,revenue), revenue )) + geom_bar(stat="identity",  fill = "dodgerblue") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), plot.title = element_text(color = "Black") ) +
+  scale_y_continuous(limits = c(0,3000000000), breaks = seq(0,3000000000,500000000), labels = scales::comma) +
+  labs(x ="",y = "Total Revenue in $", title="Highest Grossing Movies - Top 10")
+```
+
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE, fig.width=4, fig.height=4,fig.show='hold',fig.align='center', echo=FALSE,include=FALSE }
+#Building the Logit Model
+library(lubridate)
+movies1 <- new_lr_movies
+movies1 <- movies1[!is.na(movies1$vote_count), ]
+movies1 <- movies1[!is.na(movies1$vote_average), ]
+movies1$release_date <- month(movies1$release_date)
+movies1$release_date <- as.factor(movies1$release_date)
+
+C= mean(movies1$vote_average)
+v = movies1$vote_count
+R = movies1$vote_average
+movies1$wratings <- (v/(v+1838) * R) + (1838/(1838+v) * C)
+```
+The below treemap shows that months such as May, August, etc. has a better rating, hence the darker colors.
+```{r message=FALSE, warning=FALSE, paged.print=FALSE, fig.width=4, fig.height=6,fig.show='hold',fig.align='center', echo=FALSE}
+movies1$release_date  = ifelse(movies1$release_date == 1, "Jan" ,   movies1$release_date)
+movies1$release_date  = ifelse(movies1$release_date == 2, "Feb" ,   movies1$release_date)
+movies1$release_date  = ifelse(movies1$release_date == 3, "Mar" ,   movies1$release_date)
+movies1$release_date  = ifelse(movies1$release_date == 4, "Apr" ,   movies1$release_date)
+movies1$release_date  = ifelse(movies1$release_date == 5, "May" ,   movies1$release_date)
+movies1$release_date  = ifelse(movies1$release_date == 6, "June" ,   movies1$release_date)
+movies1$release_date  = ifelse(movies1$release_date == 7, "July" ,   movies1$release_date)
+movies1$release_date  = ifelse(movies1$release_date == 8, "Aug" ,   movies1$release_date)
+movies1$release_date  = ifelse(movies1$release_date == 9, "Sep" ,   movies1$release_date)
+movies1$release_date  = ifelse(movies1$release_date == 10, "Oct" ,   movies1$release_date)
+movies1$release_date  = ifelse(movies1$release_date == 11, "Nov" ,   movies1$release_date)
+movies1$release_date  = ifelse(movies1$release_date == 12, "Dec" ,   movies1$release_date)
+
+movies1$jan  = ifelse(movies1$release_date == "Jan" ,  1,0) 
+movies1$feb  = ifelse(movies1$release_date == "Feb" ,  1,0) 
+movies1$Mar  = ifelse(movies1$release_date == "Mar" ,  1,0) 
+movies1$Apr  = ifelse(movies1$release_date == "Apr" ,  1,0) 
+movies1$May  = ifelse(movies1$release_date == "May" ,  1,0) 
+movies1$june  = ifelse(movies1$release_date == "June" ,  1,0) 
+movies1$July  = ifelse(movies1$release_date == "July" ,  1,0) 
+movies1$aug  = ifelse(movies1$release_date == "Aug" ,  1,0) 
+movies1$sep  = ifelse(movies1$release_date == "Sep" ,  1,0) 
+movies1$oct  = ifelse(movies1$release_date == "Oct" ,  1,0) 
+movies1$nov  = ifelse(movies1$release_date == "Nov" ,  1,0) 
+movies1$dec  = ifelse(movies1$release_date == "Dec" ,  1,0) 
+
+treemap(movies1, #Your data frame object
+        index = c("release_date"),  #A list of your categorical variables
+        vSize = "wratings",  #This is your quantitative variable
+        type = "index", #Type sets the organization and color scheme of your treemap
+        palette = "Greens",  #Select your color palette from the RColorBrewer presets or make your own.
+        title = "Average Rating by released month", #Customize your title
+        fontsize.title = 14 #Change the font size of the title
+        )
+```
+```{r message=FALSE, warning=FALSE, paged.print=FALSE, fig.width=4, fig.height=6,fig.show='hold',fig.align='center', echo=FALSE,include=FALSE}
+movies1$bwratings = ifelse(movies1$wratings > 6,1,0)
+library(caTools)
+set.seed(123)
+split = sample.split(movies1, SplitRatio = 0.80)
+training_set = subset(movies1, split == TRUE)
+test_set = subset(movies1, split == FALSE)
+
+#Model 1 
+classifier_1 = glm(formula = bwratings ~ Drama + budget+popularity+runtime+Comedy +Action +Thriller +Adventure+Science_Fiction +Animation +Family +Romance +Mystery +Music +Horror +Fantasy +Documentary +Fantasy +War+Western +History +Foreign +TV_Movie+release_date
+, data = training_set,family = binomial )
+summary(classifier_1)
+
+#Model 2
+classifier_2= glm(formula = bwratings ~ Drama + budget+popularity+runtime +Mystery +Music +Horror +Fantasy +Documentary +Fantasy +War+Western +History +Foreign +TV_Movie+release_date
+, data = training_set,family = binomial )
+summary(classifier_2)
+
+#Model 3
+classifier_3 = glm(formula = bwratings ~ Drama + budget+popularity+runtime +Mystery +Music +Horror   +TV_Movie+release_date
+, data = training_set,family = binomial )
+summary(classifier_3)
+
+prob_pred = predict(classifier_3, type = 'response', newdata = test_set)
+y_pred = ifelse(prob_pred > 0.6, 1, 0)
+
+cm = table(test_set$bwratings, y_pred > 0.6)
+```
+###Conclusion:
+
+We thought the following variables, which are not included in our model, could potentially affect its relationship: social/cultural phenomenon, critics reviews, and cast. For example, a recent trend in highly rated movies is seeing a diversified cast taking on leading roles e.g. Black Panther. Furthermore, critics ratings, which are published before the movie is released to the general audience, may affect whether people believe a movie would be good or bad. Lastly, we believe that cast could also impact our model, but we chose to exclude it because we did not find a strong relationship between cast and movie ratings.
+
+After running the regression model we found that the following variables were statistically significant: genres - Drama, Mystery, Music, Horror, TV Movie, and months - January, February, March, April, May, July, August, budget, popularity, and runtime. This model makes sense because there is a higher chance of a good movie being released during the holiday season. Furthermore, our EDA confirmed our suspicions that Drama, the most released movie genre, as well as budget, popularity, and runtime,  play significant roles in determining whether a movie would be good.
+
+To confirm whether our model was accurately predicting whether a movie would be good or bad we partitioned our data into a training (70%) and test (30%) dataset. After training our model, we then tested it and found that it accurately predicted whether a movie was good or bad 90.3% of the time.
+
